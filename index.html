@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Warehouse Management System</title>
+    <!-- External stylesheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Header Navigation -->
+    <header class="header">
+        <div class="container header-content">
+            <div class="brand">
+                <div class="brand-icon">📦</div>
+                <div>
+                    <h1>Warehouse Management System</h1>
+                    <p>Real-time Stock Tracking, Inventory Control & Location Mapping</p>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-outline" onclick="exportToCSV()" title="Download inventory as CSV">
+                    📥 Export CSV
+                </button>
+                <button class="btn btn-outline" onclick="resetToSampleData()" title="Restore default sample records">
+                    🔄 Reset Data
+                </button>
+                <button class="btn btn-primary" onclick="openAddModal()">
+                    ➕ Add Product
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- KPI / Stats Summary Cards -->
+        <section class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-info">
+                    <div class="stat-label">Total SKUs</div>
+                    <div class="stat-value" id="stat-total-skus">0</div>
+                    <div class="stat-desc">Distinct catalog items</div>
+                </div>
+                <div class="stat-icon indigo">🏷️</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-info">
+                    <div class="stat-label">Total Units in Stock</div>
+                    <div class="stat-value" id="stat-total-units">0</div>
+                    <div class="stat-desc">Physical units on shelves</div>
+                </div>
+                <div class="stat-icon emerald">📊</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-info">
+                    <div class="stat-label">Inventory Valuation</div>
+                    <div class="stat-value" id="stat-total-val">$0.00</div>
+                    <div class="stat-desc">Total cost of stock on hand</div>
+                </div>
+                <div class="stat-icon amber">💰</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-info">
+                    <div class="stat-label">Low / Out of Stock</div>
+                    <div class="stat-value" id="stat-low-stock">0</div>
+                    <div class="stat-desc">Requires immediate replenishment</div>
+                </div>
+                <div class="stat-icon rose">⚠️</div>
+            </div>
+        </section>
+
+        <!-- Search & Filter Controls -->
+        <section class="toolbar-card">
+            <div class="toolbar-filters">
+                <div class="search-box">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="search-input" placeholder="Search by SKU, product name, or bin location..." oninput="renderApp()">
+                </div>
+                <select id="filter-category" class="select-filter" onchange="renderApp()">
+                    <option value="ALL">All Categories</option>
+                    <option value="Electronics">Electronics</option>
+                    <option value="Industrial Tools">Industrial Tools</option>
+                    <option value="Packaging">Packaging</option>
+                    <option value="Safety Equipment">Safety Equipment</option>
+                    <option value="Raw Materials">Raw Materials</option>
+                </select>
+                <select id="filter-status" class="select-filter" onchange="renderApp()">
+                    <option value="ALL">All Stock Statuses</option>
+                    <option value="IN_STOCK">In Stock (Optimal)</option>
+                    <option value="LOW_STOCK">Low Stock (≤ Minimum)</option>
+                    <option value="OUT_OF_STOCK">Out of Stock (Zero)</option>
+                </select>
+            </div>
+        </section>
+
+        <!-- Product Inventory Table -->
+        <section class="content-card">
+            <div class="card-header">
+                <h2>📦 Product Inventory Master</h2>
+                <span class="badge" id="product-count-badge">0 Products</span>
+            </div>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>SKU / ID</th>
+                            <th>Product Name</th>
+                            <th>Category</th>
+                            <th>Warehouse Bin</th>
+                            <th style="text-align: right;">Unit Price</th>
+                            <th style="text-align: right;">In Hand</th>
+                            <th style="text-align: right;">Min Stock</th>
+                            <th style="text-align: center;">Status</th>
+                            <th style="text-align: center;">Stock Actions</th>
+                            <th style="text-align: center;">Manage</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inventory-table-body">
+                        <!-- Rendered dynamically by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Stock Movement Audit Log -->
+        <section class="content-card">
+            <div class="card-header">
+                <h2>🕒 Recent Stock Activity Log</h2>
+                <small style="color: var(--text-muted);">Real-time inbound receipts, dispatches & adjustments</small>
+            </div>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date & Time</th>
+                            <th>Type</th>
+                            <th>Product / SKU</th>
+                            <th style="text-align: right;">Quantity</th>
+                            <th style="text-align: right;">New Balance</th>
+                            <th>Reason / Note</th>
+                        </tr>
+                    </thead>
+                    <tbody id="activity-log-body">
+                        <!-- Rendered dynamically by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal 1: Add / Edit Product -->
+    <div class="modal-overlay" id="product-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="product-modal-title">Add New Product</h3>
+                <button class="close-btn" onclick="closeModal('product-modal')">&times;</button>
+            </div>
+            <form id="product-form" onsubmit="saveProduct(event)">
+                <input type="hidden" id="prod-id">
+                <div class="modal-body">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="prod-sku">SKU Code *</label>
+                            <input type="text" id="prod-sku" class="form-control" placeholder="e.g. ELEC-001" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="prod-category">Category *</label>
+                            <select id="prod-category" class="form-control" required>
+                                <option value="Electronics">Electronics</option>
+                                <option value="Industrial Tools">Industrial Tools</option>
+                                <option value="Packaging">Packaging</option>
+                                <option value="Safety Equipment">Safety Equipment</option>
+                                <option value="Raw Materials">Raw Materials</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="prod-name">Product Name *</label>
+                        <input type="text" id="prod-name" class="form-control" placeholder="e.g. Optical LiDAR Sensor Mod-4" required>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="prod-location">Location / Bin Rack *</label>
+                            <input type="text" id="prod-location" class="form-control" placeholder="e.g. A-01-S2-B1" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="prod-price">Unit Price ($) *</label>
+                            <input type="number" id="prod-price" class="form-control" min="0" step="0.01" placeholder="0.00" required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="prod-qty">Initial Stock Quantity *</label>
+                            <input type="number" id="prod-qty" class="form-control" min="0" step="1" placeholder="0" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="prod-min">Safety Min Stock *</label>
+                            <input type="number" id="prod-min" class="form-control" min="1" step="1" placeholder="10" required>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" onclick="closeModal('product-modal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Product</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal 2: Stock Adjustment (In / Out) -->
+    <div class="modal-overlay" id="adjust-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="adjust-modal-title">Adjust Stock Level</h3>
+                <button class="close-btn" onclick="closeModal('adjust-modal')">&times;</button>
+            </div>
+            <form id="adjust-form" onsubmit="saveStockAdjustment(event)">
+                <input type="hidden" id="adjust-prod-id">
+                <input type="hidden" id="adjust-action-type">
+                <div class="modal-body">
+                    <p id="adjust-prod-info" style="margin-bottom: 15px; font-weight: 500;"></p>
+
+                    <div class="form-group">
+                        <label for="adjust-qty" id="adjust-qty-label">Quantity *</label>
+                        <input type="number" id="adjust-qty" class="form-control" min="1" step="1" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="adjust-reason">Reason / Reference Note *</label>
+                        <input type="text" id="adjust-reason" class="form-control" placeholder="e.g. Purchase order delivery or dispatch order #104" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" onclick="closeModal('adjust-modal')">Cancel</button>
+                    <button type="submit" id="adjust-submit-btn" class="btn btn-primary">Apply Adjustment</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- =======================================================================
+         JavaScript Logic: State, CRUD, Search, Filter, Stats & LocalStorage
+         ======================================================================= -->
+    <script>
+        // Storage keys
+        const STORAGE_KEY_PRODUCTS = 'wms_simple_products';
+        const STORAGE_KEY_LOGS = 'wms_simple_logs';
+
+        // Sample initial datasets
+        const DEFAULT_PRODUCTS = [
+            { id: '1', sku: 'ELEC-SENS-01', name: 'Industrial Optical LiDAR Sensor', category: 'Electronics', location: 'A-01-S2-B1', price: 120.00, stock: 45, minStock: 15 },
+            { id: '2', sku: 'ELEC-CTRL-02', name: 'Programmable Logic Controller (PLC)', category: 'Electronics', location: 'A-02-S1-B3', price: 310.00, stock: 18, minStock: 10 },
+            { id: '3', sku: 'TOOL-PNEU-01', name: 'Pneumatic Air Impact Wrench', category: 'Industrial Tools', location: 'B-01-S3-B2', price: 85.00, stock: 32, minStock: 12 },
+            { id: '4', sku: 'SAFE-VEST-01', name: 'Hi-Vis Reflective Safety Vest', category: 'Safety Equipment', location: 'C-01-S1-B1', price: 6.50, stock: 120, minStock: 40 },
+            { id: '5', sku: 'PACK-BOX-MED', name: 'Corrugated Shipping Cartons (Bundle 25)', category: 'Packaging', location: 'C-02-S2-B4', price: 18.00, stock: 65, minStock: 25 },
+            { id: '6', sku: 'RAWM-POLY-HD', name: 'High-Density Polyethylene Resin 25kg', category: 'Raw Materials', location: 'D-01-S1-B1', price: 42.00, stock: 80, minStock: 30 },
+            { id: '7', sku: 'TOOL-HYDR-02', name: 'Hydraulic Pallet Jack 5500 lbs', category: 'Industrial Tools', location: 'B-04-S1-B1', price: 280.00, stock: 4, minStock: 6 },
+            { id: '8', sku: 'ELEC-CABL-CAT6', name: 'Shielded Industrial Cat6A Spool 1000ft', category: 'Electronics', location: 'A-03-S2-B2', price: 110.00, stock: 2, minStock: 8 },
+            { id: '9', sku: 'PACK-STR-TAPE', name: 'Heavy Duty Packaging Tape (Pack of 6)', category: 'Packaging', location: 'C-01-S3-B2', price: 14.20, stock: 0, minStock: 20 }
+        ];
+
+        const DEFAULT_LOGS = [
+            { id: 'L1', timestamp: new Date(Date.now() - 3600000 * 3).toLocaleString(), type: 'IN', sku: 'ELEC-SENS-01', name: 'Optical LiDAR Sensor', qty: 25, balance: 45, reason: 'Supplier PO #1002 Delivery' },
+            { id: 'L2', timestamp: new Date(Date.now() - 3600000 * 6).toLocaleString(), type: 'OUT', sku: 'PACK-STR-TAPE', name: 'Heavy Duty Packaging Tape', qty: 15, balance: 0, reason: 'Outbound Customer Order #481' },
+            { id: 'L3', timestamp: new Date(Date.now() - 3600000 * 12).toLocaleString(), type: 'OUT', sku: 'TOOL-HYDR-02', name: 'Hydraulic Pallet Jack', qty: 2, balance: 4, reason: 'Dispatched to Assembly Line B' }
+        ];
+
+        // State variables
+        let products = [];
+        let logs = [];
+
+        // Initialize Application
+        function initApp() {
+            const savedProducts = localStorage.getItem(STORAGE_KEY_PRODUCTS);
+            const savedLogs = localStorage.getItem(STORAGE_KEY_LOGS);
+
+            products = savedProducts ? JSON.parse(savedProducts) : [...DEFAULT_PRODUCTS];
+            logs = savedLogs ? JSON.parse(savedLogs) : [...DEFAULT_LOGS];
+
+            saveState();
+            renderApp();
+        }
+
+        // Save State to LocalStorage
+        function saveState() {
+            localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(products));
+            localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(logs));
+        }
+
+        // Reset to initial demo records
+        function resetToSampleData() {
+            if (confirm('Are you sure you want to reset all data to default warehouse sample records?')) {
+                products = [...DEFAULT_PRODUCTS];
+                logs = [...DEFAULT_LOGS];
+                saveState();
+                renderApp();
+                showToast('Reset to sample dataset successfully!', 'success');
+            }
+        }
+
+        // Master Render Function
+        function renderApp() {
+            renderKPIs();
+            renderInventoryTable();
+            renderActivityLog();
+        }
+
+        // 1. Render Dashboard KPIs
+        function renderKPIs() {
+            let totalUnits = 0;
+            let totalValuation = 0;
+            let lowOrOutCount = 0;
+
+            products.forEach(p => {
+                const stock = Number(p.stock) || 0;
+                const price = Number(p.price) || 0;
+                const min = Number(p.minStock) || 0;
+
+                totalUnits += stock;
+                totalValuation += (stock * price);
+
+                if (stock <= min) {
+                    lowOrOutCount++;
+                }
+            });
+
+            document.getElementById('stat-total-skus').textContent = products.length;
+            document.getElementById('stat-total-units').textContent = totalUnits.toLocaleString();
+            document.getElementById('stat-total-val').textContent = '$' + totalValuation.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            document.getElementById('stat-low-stock').textContent = lowOrOutCount;
+        }
+
+        // 2. Render Inventory Table with Filters & Search
+        function renderInventoryTable() {
+            const tbody = document.getElementById('inventory-table-body');
+            const searchVal = document.getElementById('search-input').value.toLowerCase().trim();
+            const categoryVal = document.getElementById('filter-category').value;
+            const statusVal = document.getElementById('filter-status').value;
+
+            const filtered = products.filter(p => {
+                // Search filter (SKU, Name, Location)
+                const matchesSearch = !searchVal || 
+                    p.sku.toLowerCase().includes(searchVal) || 
+                    p.name.toLowerCase().includes(searchVal) || 
+                    p.location.toLowerCase().includes(searchVal);
+
+                // Category filter
+                const matchesCategory = (categoryVal === 'ALL') || (p.category === categoryVal);
+
+                // Stock status filter
+                let matchesStatus = true;
+                const stock = Number(p.stock) || 0;
+                const min = Number(p.minStock) || 0;
+
+                if (statusVal === 'IN_STOCK') {
+                    matchesStatus = stock > min;
+                } else if (statusVal === 'LOW_STOCK') {
+                    matchesStatus = stock > 0 && stock <= min;
+                } else if (statusVal === 'OUT_OF_STOCK') {
+                    matchesStatus = stock === 0;
+                }
+
+                return matchesSearch && matchesCategory && matchesStatus;
+            });
+
+            document.getElementById('product-count-badge').textContent = `${filtered.length} Products`;
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="10" class="empty-state">
+                            <span class="empty-state-icon">🔍</span>
+                            <p>No products match your search or filter criteria.</p>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = filtered.map(p => {
+                const stock = Number(p.stock) || 0;
+                const min = Number(p.minStock) || 0;
+                
+                let badgeClass = 'badge-in-stock';
+                let badgeText = '● In Stock';
+
+                if (stock === 0) {
+                    badgeClass = 'badge-out-of-stock';
+                    badgeText = '✖ Out of Stock';
+                } else if (stock <= min) {
+                    badgeClass = 'badge-low-stock';
+                    badgeText = '▲ Low Stock';
+                }
+
+                return `
+                    <tr>
+                        <td><span class="sku-badge">${p.sku}</span></td>
+                        <td><strong>${escapeHTML(p.name)}</strong></td>
+                        <td><span style="color: var(--text-muted);">${escapeHTML(p.category)}</span></td>
+                        <td><span class="location-tag">${escapeHTML(p.location)}</span></td>
+                        <td style="text-align: right; font-weight: 600;">$${Number(p.price).toFixed(2)}</td>
+                        <td style="text-align: right; font-weight: 700; ${stock <= min ? 'color: var(--danger);' : ''}">${stock}</td>
+                        <td style="text-align: right; color: var(--text-muted);">${min}</td>
+                        <td style="text-align: center;"><span class="badge ${badgeClass}">${badgeText}</span></td>
+                        <td style="text-align: center;">
+                            <div class="action-buttons-group" style="justify-content: center;">
+                                <button class="btn btn-sm btn-success" onclick="openAdjustModal('${p.id}', 'IN')" title="Add Stock (Inbound)">+ In</button>
+                                <button class="btn btn-sm btn-danger" onclick="openAdjustModal('${p.id}', 'OUT')" title="Deduct Stock (Dispatch)">- Out</button>
+                            </div>
+                        </td>
+                        <td style="text-align: center;">
+                            <div class="action-buttons-group" style="justify-content: center;">
+                                <button class="btn-icon edit" onclick="openEditModal('${p.id}')" title="Edit Product">✏️</button>
+                                <button class="btn-icon delete" onclick="deleteProduct('${p.id}')" title="Delete Product">🗑️</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // 3. Render Activity / Movement Log
+        function renderActivityLog() {
+            const tbody = document.getElementById('activity-log-body');
+            
+            if (logs.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="empty-state">No stock activity logged yet.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = logs.slice(0, 10).map(l => {
+                let typeClass = 'movement-in';
+                let sign = '+';
+                if (l.type === 'OUT') {
+                    typeClass = 'movement-out';
+                    sign = '-';
+                }
+
+                return `
+                    <tr>
+                        <td><small style="color: var(--text-muted);">${l.timestamp}</small></td>
+                        <td><span class="movement-type ${typeClass}">${l.type}</span></td>
+                        <td><strong>${escapeHTML(l.sku)}</strong> <small>(${escapeHTML(l.name)})</small></td>
+                        <td style="text-align: right; font-weight: 700; color: ${l.type === 'IN' ? 'var(--success-text)' : 'var(--danger-text)'};">
+                            ${sign}${Math.abs(l.qty)}
+                        </td>
+                        <td style="text-align: right; font-weight: 600;">${l.balance}</td>
+                        <td><small style="color: var(--text-muted);">${escapeHTML(l.reason)}</small></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // --- CRUD: ADD & EDIT PRODUCT ---
+        function openAddModal() {
+            document.getElementById('product-form').reset();
+            document.getElementById('prod-id').value = '';
+            document.getElementById('product-modal-title').textContent = '➕ Add New Product';
+            openModal('product-modal');
+        }
+
+        function openEditModal(productId) {
+            const product = products.find(p => p.id === productId);
+            if (!product) return;
+
+            document.getElementById('prod-id').value = product.id;
+            document.getElementById('prod-sku').value = product.sku;
+            document.getElementById('prod-name').value = product.name;
+            document.getElementById('prod-category').value = product.category;
+            document.getElementById('prod-location').value = product.location;
+            document.getElementById('prod-price').value = product.price;
+            document.getElementById('prod-qty').value = product.stock;
+            document.getElementById('prod-min').value = product.minStock;
+
+            document.getElementById('product-modal-title').textContent = '✏️ Edit Product: ' + product.sku;
+            openModal('product-modal');
+        }
+
+        function saveProduct(event) {
+            event.preventDefault();
+
+            const id = document.getElementById('prod-id').value;
+            const sku = document.getElementById('prod-sku').value.trim().toUpperCase();
+            const name = document.getElementById('prod-name').value.trim();
+            const category = document.getElementById('prod-category').value;
+            const location = document.getElementById('prod-location').value.trim().toUpperCase();
+            const price = parseFloat(document.getElementById('prod-price').value) || 0;
+            const stock = parseInt(document.getElementById('prod-qty').value, 10) || 0;
+            const minStock = parseInt(document.getElementById('prod-min').value, 10) || 0;
+
+            // SKU Uniqueness check (except when editing the same item)
+            const duplicate = products.find(p => p.sku === sku && p.id !== id);
+            if (duplicate) {
+                showToast(`SKU "${sku}" is already in use by another item!`, 'danger');
+                return;
+            }
+
+            if (id) {
+                // Update existing product
+                const index = products.findIndex(p => p.id === id);
+                if (index !== -1) {
+                    products[index] = { ...products[index], sku, name, category, location, price, stock, minStock };
+                    showToast(`Product "${sku}" updated successfully!`, 'success');
+                }
+            } else {
+                // Add new product
+                const newProduct = {
+                    id: Date.now().toString(),
+                    sku,
+                    name,
+                    category,
+                    location,
+                    price,
+                    stock,
+                    minStock
+                };
+                products.unshift(newProduct);
+
+                // Add log entry
+                logs.unshift({
+                    id: 'L' + Date.now(),
+                    timestamp: new Date().toLocaleString(),
+                    type: 'IN',
+                    sku,
+                    name,
+                    qty: stock,
+                    balance: stock,
+                    reason: 'Initial Product Registration'
+                });
+
+                showToast(`Product "${sku}" added to inventory!`, 'success');
+            }
+
+            saveState();
+            closeModal('product-modal');
+            renderApp();
+        }
+
+        // --- DELETE PRODUCT ---
+        function deleteProduct(productId) {
+            const product = products.find(p => p.id === productId);
+            if (!product) return;
+
+            if (confirm(`Are you sure you want to permanently delete "${product.name}" (${product.sku})?`)) {
+                products = products.filter(p => p.id !== productId);
+                saveState();
+                renderApp();
+                showToast(`Product ${product.sku} deleted.`, 'danger');
+            }
+        }
+
+        // --- STOCK ADJUSTMENT (IN / OUT) ---
+        function openAdjustModal(productId, actionType) {
+            const product = products.find(p => p.id === productId);
+            if (!product) return;
+
+            document.getElementById('adjust-form').reset();
+            document.getElementById('adjust-prod-id').value = productId;
+            document.getElementById('adjust-action-type').value = actionType;
+
+            const isStockIn = actionType === 'IN';
+            document.getElementById('adjust-modal-title').textContent = isStockIn ? '📥 Stock IN (Receive Goods)' : '📤 Stock OUT (Dispatch Goods)';
+            document.getElementById('adjust-qty-label').textContent = isStockIn ? 'Quantity to Receive *' : 'Quantity to Dispatch *';
+            document.getElementById('adjust-submit-btn').className = isStockIn ? 'btn btn-success' : 'btn btn-danger';
+            document.getElementById('adjust-submit-btn').textContent = isStockIn ? 'Receive Stock (+)' : 'Dispatch Stock (-)';
+
+            document.getElementById('adjust-prod-info').innerHTML = `
+                Product: <strong style="color: var(--primary);">${escapeHTML(product.sku)}</strong> - ${escapeHTML(product.name)}<br>
+                Current In-Hand Stock: <strong>${product.stock} units</strong>
+            `;
+
+            openModal('adjust-modal');
+        }
+
+        function saveStockAdjustment(event) {
+            event.preventDefault();
+
+            const productId = document.getElementById('adjust-prod-id').value;
+            const actionType = document.getElementById('adjust-action-type').value;
+            const qty = parseInt(document.getElementById('adjust-qty').value, 10);
+            const reason = document.getElementById('adjust-reason').value.trim();
+
+            const product = products.find(p => p.id === productId);
+            if (!product || isNaN(qty) || qty <= 0) {
+                showToast('Please enter a valid quantity greater than zero.', 'danger');
+                return;
+            }
+
+            if (actionType === 'OUT' && product.stock < qty) {
+                showToast(`Insufficient stock! Cannot dispatch ${qty} units. Current stock is ${product.stock}.`, 'danger');
+                return;
+            }
+
+            // Calculate new stock
+            if (actionType === 'IN') {
+                product.stock += qty;
+            } else {
+                product.stock -= qty;
+            }
+
+            // Record stock log
+            logs.unshift({
+                id: 'L' + Date.now(),
+                timestamp: new Date().toLocaleString(),
+                type: actionType,
+                sku: product.sku,
+                name: product.name,
+                qty: qty,
+                balance: product.stock,
+                reason: reason
+            });
+
+            saveState();
+            closeModal('adjust-modal');
+            renderApp();
+
+            showToast(`${actionType === 'IN' ? 'Received' : 'Dispatched'} ${qty} units for ${product.sku}!`, 'success');
+        }
+
+        // --- EXPORT DATA TO CSV ---
+        function exportToCSV() {
+            if (products.length === 0) {
+                showToast('No products to export!', 'warning');
+                return;
+            }
+
+            const headers = ['SKU', 'Product Name', 'Category', 'Bin Location', 'Unit Price ($)', 'Current Stock', 'Min Stock Level', 'Inventory Valuation ($)'];
+            const rows = products.map(p => [
+                `"${p.sku}"`,
+                `"${p.name.replace(/"/g, '""')}"`,
+                `"${p.category}"`,
+                `"${p.location}"`,
+                p.price.toFixed(2),
+                p.stock,
+                p.minStock,
+                (p.stock * p.price).toFixed(2)
+            ]);
+
+            const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement('a');
+            link.setAttribute('href', encodedUri);
+            link.setAttribute('download', `Warehouse_Inventory_${new Date().toISOString().split('T')[0]}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            showToast('Inventory exported to CSV!', 'success');
+        }
+
+        // --- MODAL UTILITIES ---
+        function openModal(id) {
+            const modal = document.getElementById(id);
+            if (modal) modal.classList.add('active');
+        }
+
+        function closeModal(id) {
+            const modal = document.getElementById(id);
+            if (modal) modal.classList.remove('active');
+        }
+
+        // Close modal on backdrop click
+        window.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) {
+                e.target.classList.remove('active');
+            }
+        });
+
+        // Close on ESC key
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
+            }
+        });
+
+        // Toast Feedback System
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(10px)';
+                toast.style.transition = 'all 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // XSS Prevention Helper
+        function escapeHTML(str) {
+            return String(str || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        // Start App on DOM Ready
+        document.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+</html>
